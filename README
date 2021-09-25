@@ -1,0 +1,4 @@
+The purpose of this repo is to practice lessons from Udemy course "More than certified in Terraform" taught by Derek Morgan.
+
+In order to have this repo functioning values in terraform.tfvars have to be specified as well as providing public ssh key.
+It also contains Personal Notes made during the course which help me understand about functions and other important information shared by the instructor. 
