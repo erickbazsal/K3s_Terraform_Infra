@@ -1,0 +1,214 @@
+module parameter -> module variables
+cidrsubnet function
+cidrsubnet(prefix, newbits, netnum)
+CLI: 
+> cidrsubnet("10.123.0.0/16",8,2)  
+"10.123.2.0/24"
+-------------------------------------
+Range 
+range generates a list of numbers using a start value, a limit value, and a step value.
+
+range(max)
+range(start, limit)
+range(start, limit, step)
+range(1,6,2)
+> range(1,6,2)
+tolist([
+  1,
+  3,
+  5,
+])
+
+
+[for i in range(1,6,2) : cidrsubnet("10.123.0.0/16",8,i)]
+=========================
+private_sn_count = 5
+Error: Invalid index
+
+  on networking/main.tf line 37, in resource "aws_subnet" "Bazan_private_subnet":
+  37:     availability_zone = ["us-west-2a","us-west-2b","us-west-2c","us-west-2d"][count.index]
+    |----------------
+    | count.index is 4
+
+The given key does not identify an element in this collection value.
+
+Since datasource is only returning 4 values
+--------------------------
+Random shuffle can be used to assign random values from a list 
+availability_zone = random_shuffle.az_list.result[count.index]
+=============================
+# Define the common tags for all resources
+locals {
+  common_tags = {
+    Component   = "awesome-app"
+    Environment = "production"
+  }
+}
+
+# Create a resource that blends the common tags with instance-specific tags.
+resource "aws_instance" "server" {
+  ami           = "ami-123456"
+  instance_type = "t2.micro"
+
+  tags = "${merge(
+    local.common_tags,
+    map(
+      "Name", "awesome-app-server",
+      "Role", "server"
+    )
+  )}"
+}
+=============================
+The map function is no longer available. Prior to Terraform v0.12 it was the only available syntax for writing a literal map inside an expression, but Terraform v0.12 introduced a new first-class syntax.
+
+To update an expression like map("a", "b", "c", "d"), write the following instead:
+
+tomap({
+  a = "b"
+  c = "d"
+})
+============================
+Conditionals 
+
+
+> "us-east1" == "us-east1" ? 3:1
+3
+> "us-east1" == "us-east2" ? 3:1
+1
+>  
+> true ? 1:0
+1
+> false ? 1:0
+0
+> 
+
+db_subnet_group = true 
+count = var.db_subnet_group == true ? 1 : 0 
+0
+count = var.db_subnet_group  ? 1 : 0
+=====
+Error: Missing resource instance key
+
+  on networking/outputs.tf line 8, in output "dbsub_id":
+   8:   value = aws_db_subnet_group.bazan_rds_subnet_group.id
+
+Because aws_db_subnet_group.bazan_rds_subnet_group has "count" set, its
+attributes must be accessed on specific instances.
+
+For example, to correlate with indices of a referring resource, use:
+    aws_db_subnet_group.bazan_rds_subnet_group[count.index]
+
+FIX
+
+output "dbsub_id" {
+  value = aws_db_subnet_group.bazan_rds_subnet_group[0].id
+}
+===========
+Terraform schema command
+to see paramter of resources 
+
+terraform providers schema -json | jq '.' > schema .json
+
+
+        "aws_db_instance": {
+          "version": 1,
+          "block": {
+            "attributes": {
+              "address": {
+                "type": "string",
+                "description_kind": "plain",
+                "computed": true
+              },
+              .
+              .
+              .
+              "password": {
+                "type": "string",
+                "description_kind": "plain",
+                "optional": true,
+                "s
+              "performance_insights_enabled": {
+=================
+uuid generates a unique identifier string.
+
+> substr(1234, 0,2)
+"12"
+--
+substr()
+substr extracts a substring from a given string by offset and length.
+> substr("hello world", 1, 4)
+ello
+--
+> substr(uuid(), 0,4)
+"623d"
+================
+upper
+> upper("hello")
+HELLO
+-
+protocol = upper(var.tg_protocol)
+===============
+Terraform 0.14.0 has a bug that prevents ignore_changes from working properly (or at all). Terraform 0.14.1+ is REQUIRED
+===============
+With every change we make at the TG since it is using a uuid, it will require a replacement 
+  ~ resource "aws_lb_listener" "lb_listener" {
+        id                = "arn:aws:elasticloadbalancing:us-west-2:771754991068:listener/app/K8s-Lb/cbaf0d4a6bd71aee/6f86d324bc9bcbd4"
+      ~ port              = 8080 -> 80
+        tags              = {}
+        # (4 unchanged attributes hidden)
+
+      ~ default_action {
+          ~ target_group_arn = "arn:aws:elasticloadbalancing:us-west-2:771754991068:targetgroup/bazan-lb-tg-979/4863793e7afd7d2c" -> (known after apply)
+            # (2 unchanged attributes hidden)
+        }
+    }
+
+    It will get stuck becuase the target group was destroyed and there is no reference to it , for that we use created_before_destroy lifecycle
+
+    TargetGroup should not be changed every time the random uuid changes, for that we use ignore_changes
+
+resource "aws_lb_target_group" "bazan_tg" {
+  name     = "bazan-lb-tg-${substr(uuid(), 0, 3)}"
+  port     = var.port_tg_port
+  protocol = upper(var.tg_protocol)
+  vpc_id   = var.vpc_id
+  lifecycle { -----------------------------> ignore when the name changes
+    ignore_changes = [name] ---------------> it does not work wth versions >0.14
+  }
+==========================
+to trigger a new random_id
+keepers = 
+
+As noted above, the random resources generate randomness only when they are created; the results produced are stored in the Terraform state and re-used until the inputs change, prompting the resource to be recreated.
+
+The resources all provide a map argument called keepers that can be populated with arbitrary key/value pairs that should be selected such that they remain the same until new random values are desired.
+
+when the key name cghanges the random will be recreated 
+
+resource "random_id" "bazan_random" {
+    byte_length = 2
+    count = var.instance_count
+    keepers = {
+      key_name = var.key_name
+    }
+}
+==========
+To see attributes from the console
+[vagrant@Aws AWS-Infra]$ terraform state show module.lb.aws_lb.bazan_lb
+# module.lb.aws_lb.bazan_lb:
+.
+.
+.
+==========
+output "instances" {
+    value = {for i in module.compute.instance : i.tags.Name => "${i.public_ip}:${module.compute.instance_port}" }
+    sensitive = true
+}
+
+terraform refresh
+terraform output
+[vagrant@Aws AWS-Infra]$ terraform output -json | jq '."instances"."value"'
+{
+  "K8s_node-37905": "54.69.125.73",
+  "K8s_node-8288": "35.85.227.93"
+}
